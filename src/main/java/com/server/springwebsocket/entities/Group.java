@@ -4,15 +4,17 @@ import java.util.*;
 public class Group {
     private String groupID;
     private String groupName;
+    private String groupPassword;
     private List<String> members;
 
     public Group() {
 
     }
 
-    public Group(String groupID, String groupName) {
+    public Group(String groupID, String groupName, String password) {
         this.groupID = groupID;
         this.groupName = groupName;
+        this.groupPassword = password;
         this.members = new ArrayList<String>();
     }
 
@@ -45,8 +47,12 @@ public class Group {
         this.members.remove(index);
     }
 
-    public List<String> getUsers() {
+    public List<String> getMembers() {
         return this.members;
+    }
+
+    public boolean authenticate(String password) {
+        return this.groupPassword == password;
     }
 
 }

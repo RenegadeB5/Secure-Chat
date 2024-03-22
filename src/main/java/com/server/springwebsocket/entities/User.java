@@ -1,4 +1,5 @@
 package com.server.springwebsocket.entities;
+import java.util.UUID;
 
 public class User {
     private String uuid;
@@ -10,11 +11,11 @@ public class User {
 
     }
 
-    public User(String uuid, String ws_ID, String username, String token) {
-        this.uuid = uuid;
+    public User(String ws_ID, String username) {
+        this.uuid = UUID.randomUUID().toString();
         this.ws_ID = ws_ID;
         this.username = username;
-        this.token = token;
+        this.token = "sc_" + UUID.randomUUID().toString() + UUID.randomUUID().toString();
     }
 
     public String getUUID() {

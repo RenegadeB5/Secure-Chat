@@ -27,4 +27,9 @@ public class GroupRepository implements GroupRepositoryInterface {
     public Group getGroup(String groupID) {
         return this.repository.get(groupID);
     }
+
+    @Override
+    public boolean hasGroup(String groupID) {
+        return this.repository.containsKey(groupID);
+    }
 }
