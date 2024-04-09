@@ -8,6 +8,7 @@ import org.springframework.stereotype.Service;
 import com.server.springwebsocket.entities.*;
 import com.server.springwebsocket.repository.*;
 import com.server.springwebsocket.utils.*;
+import java.io.*;
 import java.nio.*;
 
 import java.util.*; 
@@ -27,14 +28,30 @@ public class MessageService implements MessageServiceInterface {
         this.group_repo = groups;
         this.user_repo = users;
 
-        Random generator = new Random();
+        this.decryptor = new int[256];
+        System.out.println("new: " + System.getProperty("user.dir") + "\\src\\main\\java\\com\\server\\springwebsocket\\build");
+        File file = new File(System.getProperty("user.dir") + "\\src\\main\\java\\com\\server\\springwebsocket\\build");
+        String seed = "";
+		try {
+            
+            FileReader fr = new FileReader(file);
+            BufferedReader br = new BufferedReader(fr, 1024);
+            seed = br.readLine();
+            br.close();
+        }
+        catch (Exception e) {}
+        System.out.println(seed);
+        
+
+        RandomNumberGenerator generator = new RandomNumberGenerator(seed);
         int[] range = new int[256];
         for (int i = 0; i < 256; i++) {
             range[i] = i;
         }
         for (int i = 0; i < 1000; i++) {
-            int pos_1 = generator.nextInt(256);
-            int pos_2 = generator.nextInt(256);
+            int pos_1 = generator.nextRange(1, 256);
+            int pos_2 = generator.nextRange(1, 256);
+            
             int int_1 = range[pos_1];
             int int_2 = range[pos_2];
             
@@ -43,6 +60,7 @@ public class MessageService implements MessageServiceInterface {
         }
         this.encryptor = range;
         for (int i = 0; i < 256; i++) {
+            System.out.println(this.encryptor[i]);
             int num = range[i];
             this.decryptor[num] = i;
         }
@@ -60,7 +78,7 @@ public class MessageService implements MessageServiceInterface {
 			(string) user token | (int) dm(1) or gm(2)  | (string) recipient ID | (string) message
 
 		4: create group
-            (string) user token | (string) group name | (string) group password
+            (string) user token | (string) name | (string) group password
 		
 		5: join/leave group
 			(string) user token | (string) group ID | (int) join/leave
@@ -77,7 +95,11 @@ public class MessageService implements MessageServiceInterface {
 
         int header = decoder.getInt();
         boolean user_exists = user_repo.hasUser(origin_ws_id);
-
+        String token = null;
+        User user = null;
+        Group group = null;
+        String group_name = null;
+        String group_password = null;
         switch (header) {
             case 1: // register
                 if (user_exists) break;
@@ -90,8 +112,8 @@ public class MessageService implements MessageServiceInterface {
 
             case 3: // send message
                 if (!user_exists) break;
-                String token = decoder.getString();
-                User user = this.user_repo.getUserByWsId(origin_ws_id);
+                token = decoder.getString();
+                user = this.user_repo.getUserByWsId(origin_ws_id);
                 if (!user.authenticate(token)) break;
 
                 int message_type = decoder.getInt();
@@ -106,6 +128,39 @@ public class MessageService implements MessageServiceInterface {
                 }
 
                 break;
+
+            case 4: // create group
+                if (!user_exists) break;
+                token = decoder.getString();
+                user = this.user_repo.getUserByWsId(origin_ws_id);
+                if (!user.authenticate(token)) break;
+                group_name = decoder.getString();
+                group_password = decoder.getString();
+                group = new Group(group_name, group_password);
+                group.addMember(user.getUUID());
+                this.group_repo.addGroup(group);
+                break;
+
+                
+            case 5: // join/leave group
+                if (!user_exists) break;
+                token = decoder.getString();
+                user = this.user_repo.getUserByWsId(origin_ws_id);
+                if (!user.authenticate(token)) break;
+                String group_id = decoder.getString();
+                if (this.group_repo.hasGroup(group_id)) break;
+                group = this.group_repo.getGroup(group_id);
+                int action = decoder.getInt();
+                switch (action) {
+                    case 1: 
+                        group_password = decoder.getString();
+                        if (!group.authenticate(group_password)) break;
+                        group.addMember(user.getUUID());
+                    case 2:
+                        group.removeMember(user.getUUID());    
+                }
+                
+
 
         }
 
@@ -180,8 +235,8 @@ public class MyClass {
           range[i] = i;
       }
       for (int i = 0; i < 1000; i++) {
-          int pos_1 = generator.nextInt(256);
-          int pos_2 = generator.nextInt(256);
+          int pos_1 = generator.nextRange(256);
+          int pos_2 = generator.nextRange(256);
           int int_1 = range[pos_1];
           int int_2 = range[pos_2];
           
@@ -210,3 +265,5 @@ public class MyClass {
    
 }
  */
+
+ 

@@ -1,5 +1,5 @@
 package com.server.springwebsocket.entities;
-import java.util.*; 
+import java.util.*;
 
 public class Group {
     private String groupID;
@@ -11,8 +11,8 @@ public class Group {
 
     }
 
-    public Group(String groupID, String groupName, String password) {
-        this.groupID = groupID;
+    public Group(String groupName, String password) {
+        this.groupID = UUID.randomUUID().toString();;
         this.groupName = groupName;
         this.groupPassword = password;
         this.members = new ArrayList<String>();
