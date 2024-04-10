@@ -1,4 +1,5 @@
 var seed = null;
+var token = null;
 var xmlhttp = new XMLHttpRequest();
 xmlhttp.open("GET", "build", false);
 xmlhttp.send();
@@ -118,10 +119,105 @@ function decrypt_packet(packet) {
     return packet;
 }
 
+class UIHandler {
+	constructor() {
+
+	}
+
+	
+}
+
+class WSHandler {
+	constructor() {
+		this.stompClient = new StompJs.Client({
+			brokerURL: 'ws://localhost:8080/websocket'
+		});
+		
+		this.stompClient.onConnect = (frame) => {
+			setConnected(true);
+			console.log('Connected: ' + frame);
+			stompClient.subscribe('/api/listen', (packet) => {
+				console.log(JSON.parse(packet.body));
+				this.parse_packet(decrypt_message(JSON.parse(packet.body)));
+			});
+		};
+		
+		this.stompClient.onWebSocketError = (error) => {
+			console.error('Error with websocket', error);
+		};
+		
+		this.stompClient.onStompError = (frame) => {
+			console.error('Broker reported error: ' + frame.headers['message']);
+			console.error('Additional details: ' + frame.body);
+		};
+	}
+
+	parse_packet(packet) {
+		const decoder = new Decoder(packet);
+		const header = decoder.getInt();
+		switch (header) {
+
+		}
+	}
+
+	connect() {
+		this.stompClient.activate();
+	}
+	
+	disconnect() {
+		this.stompClient.deactivate();
+		console.log("Disconnected");
+	}
+
+	send(packet) {
+		this.stompClient.publish({
+			destination: "/api/endpoint",
+			binaryBody: new Uint8Array(encrypt_packet(packet))
+		});
+	}
+}
+
+
+/*
+	packet structure
+	serverbound (int): 
+		1: register 
+			string username
+		2: authenticate
+
+		3: send message 
+			(string) user token | (int) dm(1) or gm(2)  | (string) recipient ID | (string) message
+
+		4: create group
+            (string) user token | (string) name | (string) group password
+		
+		5: join/leave group
+			(string) user token | (string) group ID | (int) join/leave
+			1: join
+				 (string) group password
+			2: leave
+
+
+    clientbound (int):
+        1: recieve user info
+            (string) user token |
+            (int) # of groups (for each) | (string group ID) (String group name) |
+            (int) # of dms (for each) | (string user ID) (String user name) |
+            * maybe send messages for each *
+
+        2: recieve alert
+            (string) alert message
+        
+        3: recieve message
+            (string) sender ID | (string) group ID | (string) message
+            
+
+    */
 
 
 
-const stompClient = new StompJs.Client({
+
+/*const stompClient = new StompJs.Client({
 	brokerURL: 'ws://localhost:8080/websocket'
 });
 
@@ -180,4 +276,4 @@ $(function() {
 	$("#connect").click(() => connect());
 	$("#disconnect").click(() => disconnect());
 	$("#send").click(() => sendName());
-});
+});*/

@@ -69,7 +69,7 @@ public class MessageService implements MessageServiceInterface {
 
     /*
 	packet structure
-	serverBound: 
+	serverbound (int): 
 		1: register 
 			string username
 		2: authenticate
@@ -85,7 +85,25 @@ public class MessageService implements MessageServiceInterface {
 			1: join
 				 (string) group password
 			2: leave
+
+
+    clientbound (int):
+        1: recieve user info
+            (string) user token |
+            (int) # of groups (for each) | (string group ID) (String group name) |
+            (int) # of dms (for each) | (string user ID) (String user name) |
+            * maybe send messages for each *
+
+        2: recieve alert
+            (string) alert message
+        
+        3: recieve message
+            (string) sender ID | (string) group ID | (string) message
+            
+
     */
+
+
 
     @Override
     public void parse_packet(String origin_ws_id, byte[] array) {
