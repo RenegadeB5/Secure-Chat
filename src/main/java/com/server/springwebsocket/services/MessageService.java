@@ -88,11 +88,8 @@ public class MessageService implements MessageServiceInterface {
 
 
     clientbound (int):
-        1: recieve user info
-            (string) user token |
-            (int) # of groups (for each) | (string group ID) (String group name) |
-            (int) # of dms (for each) | (string user ID) (String user name) |
-            * maybe send messages for each *
+        1: recieve user token
+            (string) user token 
 
         2: recieve alert
             (string) alert message
@@ -100,6 +97,13 @@ public class MessageService implements MessageServiceInterface {
         3: recieve message
             (string) sender ID | (string) group ID | (string) message
             
+		4: recieve ID and name updates
+			(int) # of updates (repeat below)
+			(int) type:
+				1:
+					(string) user ID | (string) user name
+				2: 
+					(string) group ID | (string)  group name | (int) # of user IDS | (repeat string user IDs)
 
     */
 

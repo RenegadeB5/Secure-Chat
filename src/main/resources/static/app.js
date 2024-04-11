@@ -124,7 +124,7 @@ class UIHandler {
 
 	}
 
-	
+
 }
 
 class WSHandler {
@@ -152,11 +152,68 @@ class WSHandler {
 		};
 	}
 
+
+	/*
+	packet structure
+	serverbound (int): 
+		1: register 
+			string username
+		2: authenticate
+
+		3: send message 
+			(string) user token | (int) dm(1) or gm(2)  | (string) recipient ID | (string) message
+
+		4: create group
+            (string) user token | (string) name | (string) group password
+		
+		5: join/leave group
+			(string) user token | (string) group ID | (int) join/leave
+			1: join
+				 (string) group password
+			2: leave
+
+
+    clientbound (int):
+        1: recieve user token
+            (string) user token 
+
+        2: recieve alert
+            (string) alert message
+        
+        3: recieve message
+            (string) sender ID | (string) group ID | (string) message
+            
+		4: recieve ID and name updates
+			(int) # of updates (repeat below)
+			(int) type:
+				1:
+					(string) user ID | (string) user name
+				2: 
+					(string) group ID | (string)  group name | (int) # of user IDS | (repeat string user IDs)
+
+    */
 	parse_packet(packet) {
 		const decoder = new Decoder(packet);
 		const header = decoder.getInt();
 		switch (header) {
+			case 1:
+				token = decoder.getString();
+				// get group ids and names
+				break;
 
+			case 2:
+				var alert = decoder.getString();
+				// alert window with message
+				break;
+
+			case 3:
+				var sender_id = decoder.getString();
+				var group_id = decoder.getString();
+				var message = decoder.getString();
+				// do something with message
+				break;
+
+			
 		}
 	}
 
@@ -178,41 +235,7 @@ class WSHandler {
 }
 
 
-/*
-	packet structure
-	serverbound (int): 
-		1: register 
-			string username
-		2: authenticate
 
-		3: send message 
-			(string) user token | (int) dm(1) or gm(2)  | (string) recipient ID | (string) message
-
-		4: create group
-            (string) user token | (string) name | (string) group password
-		
-		5: join/leave group
-			(string) user token | (string) group ID | (int) join/leave
-			1: join
-				 (string) group password
-			2: leave
-
-
-    clientbound (int):
-        1: recieve user info
-            (string) user token |
-            (int) # of groups (for each) | (string group ID) (String group name) |
-            (int) # of dms (for each) | (string user ID) (String user name) |
-            * maybe send messages for each *
-
-        2: recieve alert
-            (string) alert message
-        
-        3: recieve message
-            (string) sender ID | (string) group ID | (string) message
-            
-
-    */
 
 
 
