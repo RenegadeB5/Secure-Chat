@@ -119,16 +119,23 @@ function decrypt_packet(packet) {
     return packet;
 }
 
-class UIHandler {
-	constructor() {
-
-	}
 
 
+class User {
+	id;
+	name;
+}
+
+class Group {
+	id; 
+	name;
+	members = {};
 }
 
 class WSHandler {
 	constructor() {
+		this.users = {};
+		this.groups = {};
 		this.stompClient = new StompJs.Client({
 			brokerURL: 'ws://localhost:8080/websocket'
 		});
@@ -184,12 +191,28 @@ class WSHandler {
             (string) sender ID | (string) group ID | (string) message
             
 		4: recieve ID and name updates
-			(int) # of updates (repeat below)
 			(int) type:
-				1:
+				1: user update
+					(int) add or remove
+						0: add	
+							(string) user ID | (string) user name
+						1: remove 
+							(string) user ID
 					(string) user ID | (string) user name
-				2: 
-					(string) group ID | (string)  group name | (int) # of user IDS | (repeat string user IDs)
+				2: group update
+					(int) create group, delete group, or update group members
+						1: create group
+							(string) group ID | (string)  group name
+						2: delete group
+							(string) group ID
+						3: update group members
+							(int) # of updates | repeat 
+								(int) add or remove 
+									0: add	
+										(string) user ID | (string) user name
+									1: remove 
+										(string) user ID
+
 
     */
 	parse_packet(packet) {
@@ -232,6 +255,74 @@ class WSHandler {
 			binaryBody: new Uint8Array(encrypt_packet(packet))
 		});
 	}
+}
+
+class UIHandler {
+	constructor() {
+		this.ws = new WSHandler();
+
+	}
+
+	register(username) {
+		const encoder = new Encoder();
+		encoder.addInt(1);
+		encoder.addString(username);
+		this.ws.send(encoder.finish());
+	}
+
+	send_private_message(recipient_id, message) {
+		const encoder = new Encoder();
+		encoder.addInt(3);
+		encoder.addString(token);
+		encoder.addInt(1);
+		encoder.addString(recipient_id);
+		encoder.addString(message);
+		this.ws.send(encoder.finish());
+	}
+
+	send_group_message(recipient_id, message) {
+		const encoder = new Encoder();
+		encoder.addInt(3);
+		encoder.addString(token);
+		encoder.addInt(2);
+		encoder.addString(recipient_id);
+		encoder.addString(message);
+		this.ws.send(encoder.finish());
+	}
+
+	create_group(name, password) {
+		const encoder = new Encoder();
+		encoder.addInt(4);
+		encoder.addString(token);
+		encoder.addString(name);
+		encoder.addString(password);
+		this.ws.send(encoder.finish());
+	}
+
+	/*5: join/leave group
+			(string) user token | (string) group ID | (int) join/leave
+			1: join
+				 (string) group password
+			2: leave*/
+	join_group(group_id, password) {
+		const encoder = new Encoder();
+		encoder.addInt(5);
+		encoder.addString(token);
+		encoder.addString(group_id);
+		encoder.addInt(1);
+		encoder.addString(password);
+		this.ws.send(encoder.finish());
+	}
+
+	leave_group(group_id) {
+		const encoder = new Encoder();
+		encoder.addInt(5);
+		encoder.addString(token);
+		encoder.addString(group_id);
+		encoder.addInt(2);
+		this.ws.send(encoder.finish());
+	}
+
 }
 
 
