@@ -2,6 +2,8 @@ package com.server.springwebsocket.services;
 
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.messaging.handler.annotation.SendTo;
+import org.springframework.messaging.simp.SimpMessageHeaderAccessor;
+import org.springframework.messaging.simp.SimpMessageType;
 import org.springframework.messaging.simp.SimpMessagingTemplate;
 import org.springframework.stereotype.Service;
 
@@ -18,13 +20,13 @@ public class MessageService implements MessageServiceInterface {
     
     private int[] encryptor;
     private int[] decryptor;
-    @Autowired
-    private SimpMessagingTemplate simpMessagingTemplate;
+    private final SimpMessagingTemplate simpMessagingTemplate;
     private final GroupRepositoryInterface group_repo;
 	private final UserRepositoryInterface user_repo;
 
     @Autowired
-    public MessageService(GroupRepositoryInterface groups, UserRepositoryInterface users) {
+    public MessageService(SimpMessagingTemplate messagingTemplate, GroupRepositoryInterface groups, UserRepositoryInterface users) {
+        this.simpMessagingTemplate = messagingTemplate;
         this.group_repo = groups;
         this.user_repo = users;
 
@@ -98,12 +100,27 @@ public class MessageService implements MessageServiceInterface {
             (string) sender ID | (string) group ID | (string) message
             
 		4: recieve ID and name updates
-			(int) # of updates (repeat below)
 			(int) type:
-				1:
+				1: user update
+					(int) add or remove
+						0: add	
+							(string) user ID | (string) user name
+						1: remove 
+							(string) user ID
 					(string) user ID | (string) user name
-				2: 
-					(string) group ID | (string)  group name | (int) # of user IDS | (repeat string user IDs)
+				2: group update
+					(int) create group, delete group, or update group members
+						1: create group
+							(string) group ID | (string)  group name
+						2: delete group
+							(string) group ID
+						3: update group members
+							(int) # of updates | repeat 
+								(int) add or remove 
+									0: add	
+										(string) user ID | (string) user name
+									1: remove 
+										(string) user ID
 
     */
 
@@ -112,8 +129,7 @@ public class MessageService implements MessageServiceInterface {
     @Override
     public void parse_packet(String origin_ws_id, byte[] array) {
 
-        ByteBuffer buffer = ByteBuffer.wrap(this.decrypt_packet(array));
-        Decoder decoder = new Decoder(buffer);
+        Decoder decoder = new Decoder(this.decrypt_packet(array));
 
         int header = decoder.getInt();
         boolean user_exists = user_repo.hasUser(origin_ws_id);
@@ -122,11 +138,18 @@ public class MessageService implements MessageServiceInterface {
         Group group = null;
         String group_name = null;
         String group_password = null;
+
+        Encoder encoder = new Encoder();
+        
+        System.out.println("Header: " + header);
         switch (header) {
             case 1: // register
                 if (user_exists) break;
                 String username = decoder.getString();
-                this.create_user(origin_ws_id, username);
+                token = this.create_user(origin_ws_id, username);
+                encoder.addInt(1);
+                encoder.addString(token);
+                this.send_packet(origin_ws_id, encoder.finish());
                 break;
 
             case 2: // authenticate
@@ -188,18 +211,35 @@ public class MessageService implements MessageServiceInterface {
 
     }
 
-    private void create_user(String ws_id, String username) {
+    private void send_packet(String recipient_WSID, byte[] packet) {
+        System.out.println("Sending to: " + recipient_WSID);
+        byte[] new_packet = this.encrypt_packet(packet);
+        System.out.println(new_packet[0] + " " + new_packet[1]);
+
+        SimpMessageHeaderAccessor headerAccessor = SimpMessageHeaderAccessor.create(SimpMessageType.MESSAGE);
+        headerAccessor.setSessionId(recipient_WSID);
+        headerAccessor.setLeaveMutable(true);
+        this.simpMessagingTemplate.convertAndSendToUser(
+            recipient_WSID, 
+            "/queue/listen", 
+            new_packet,
+            headerAccessor.getMessageHeaders()
+        ); 
+    }
+
+    private String create_user(String ws_id, String username) {
         
         User new_user = new User(ws_id, username);
         this.user_repo.addUser(new_user);
+        return new_user.getToken();
         
     }
 
     private void send_direct_message(String recipient_ID, String message) {
         User recipient = user_repo.getUserByUserId(recipient_ID);
-        simpMessagingTemplate.convertAndSendToUser(
+        this.simpMessagingTemplate.convertAndSendToUser(
             recipient.getWSID(), 
-            "/app/listen", 
+            "/queue/listen", 
             message
         ); 
     }
@@ -211,9 +251,9 @@ public class MessageService implements MessageServiceInterface {
         for (String id: member_ids) {
             User user = this.user_repo.getUserByUserId(id);
             String ws_id = user.getWSID();
-            simpMessagingTemplate.convertAndSendToUser(
+            this.simpMessagingTemplate.convertAndSendToUser(
                 ws_id, 
-                "/app/listen", 
+                "/queue/listen", 
                 message
             ); 
         }
@@ -222,14 +262,14 @@ public class MessageService implements MessageServiceInterface {
 
     private byte[] encrypt_packet(byte[] array) {
         for (int i = 0; i < array.length; i++) {
-            array[i] = (byte)this.encryptor[(int)array[i]];
+            array[i] = (byte)this.encryptor[(int)array[i] & 0xFF];
         }
         return array;
     }
 
     private byte[] decrypt_packet(byte[] array) {
         for (int i = 0; i < array.length; i++) {
-            array[i] = (byte)this.decryptor[(int)array[i]];
+            array[i] = (byte)this.decryptor[(int)array[i] & 0xFF];
         }
         return array;
     }

@@ -26,6 +26,10 @@ public class User {
         return this.ws_ID;
     }
 
+    public String getToken() {
+        return this.token;
+    }
+
     public void setUsername(String newUsername) {
         this.username = newUsername;
     }

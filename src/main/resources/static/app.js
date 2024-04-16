@@ -8,9 +8,13 @@ if (xmlhttp.status == 200) {
 }
 console.log(seed);
 
+const delay = ms => {
+	return new Promise((resolve, reject) => setTimeout(resolve, ms))
+};
+
 class Decoder {
 	constructor(buffer) {
-		this.buffer = new Uint8Array(buffer);
+		this.buffer = buffer;
 		this.at = 0;
 	}
 
@@ -30,7 +34,7 @@ class Decoder {
 
 class Encoder {
 	constructor() {
-		this.buffer = new Uint8Array();
+		this.buffer = [];
 		this.position = 0;
 	}
 
@@ -50,6 +54,7 @@ class Encoder {
 	}
 
 	finish() {
+		console.log(this.buffer);
 		return this.buffer;
 	}
 }
@@ -106,17 +111,20 @@ for (let i = 0; i < 256; i++) {
 
 
 function encrypt_packet(packet) {
+	const new_ = [];
     for (let i = 0; i < packet.length; i++) {
-        packet[i] = encryptor[packet[i]];
+        new_[i] = encryptor[packet[i]];
     }
-    return packet;
+    return new_;
 }
 
 function decrypt_packet(packet) {
+	const new_ = [];
+	console.log("decrypt: ", packet)
     for (let i = 0; i < packet.length; i++) {
-        packet[i] = decryptor[packet[i]];
+        new_[i] = decryptor[packet[i]];
     }
-    return packet;
+    return new_;
 }
 
 
@@ -141,11 +149,12 @@ class WSHandler {
 		});
 		
 		this.stompClient.onConnect = (frame) => {
-			setConnected(true);
-			console.log('Connected: ' + frame);
-			stompClient.subscribe('/api/listen', (packet) => {
-				console.log(JSON.parse(packet.body));
-				this.parse_packet(decrypt_message(JSON.parse(packet.body)));
+			console.log('Connected!!!');
+			this.stompClient.subscribe('/user/queue/listen', (packet) => {
+				packet = Array.from(packet._binaryBody);
+				console.log(decrypt_packet(packet));
+				//console.log(JSON.parse(packet.body));
+				this.parse_packet(decrypt_packet(packet));
 			});
 		};
 		
@@ -157,6 +166,8 @@ class WSHandler {
 			console.error('Broker reported error: ' + frame.headers['message']);
 			console.error('Additional details: ' + frame.body);
 		};
+		console.log("connect attempt...");
+		this.stompClient.activate();
 	}
 
 
@@ -218,9 +229,11 @@ class WSHandler {
 	parse_packet(packet) {
 		const decoder = new Decoder(packet);
 		const header = decoder.getInt();
+		console.log(header);
 		switch (header) {
 			case 1:
 				token = decoder.getString();
+				console.log(token);
 				// get group ids and names
 				break;
 
@@ -240,9 +253,6 @@ class WSHandler {
 		}
 	}
 
-	connect() {
-		this.stompClient.activate();
-	}
 	
 	disconnect() {
 		this.stompClient.deactivate();
@@ -250,9 +260,11 @@ class WSHandler {
 	}
 
 	send(packet) {
+		const encrypted = new Uint8Array(encrypt_packet(packet));
+		console.log(packet);
 		this.stompClient.publish({
-			destination: "/api/endpoint",
-			binaryBody: new Uint8Array(encrypt_packet(packet))
+			destination: "/app/endpoint",
+			binaryBody: encrypted
 		});
 	}
 }
@@ -324,6 +336,13 @@ class UIHandler {
 	}
 
 }
+
+(async () => {
+	const ui = new UIHandler();
+	await delay(5000);
+	ui.register("rgbb");
+})();
+
 
 
 

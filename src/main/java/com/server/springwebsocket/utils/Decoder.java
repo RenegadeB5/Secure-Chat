@@ -2,21 +2,22 @@ package com.server.springwebsocket.utils;
 import java.nio.*;
 
 public class Decoder {
-    private ByteBuffer buffer;
+    private byte[] buffer;
+    private int at;
 
-    public Decoder(ByteBuffer buffer) {
+    public Decoder(byte[] buffer) {
         this.buffer = buffer;
     }
 
     public int getInt() {
-        return this.buffer.getInt();
+        return (int)(this.buffer[this.at++] & 0xFF); 
     }
 
     public String getString() {
-        int length = this.buffer.getInt();
+        int length = this.getInt();
         String s = "";
         for (int i = 0; i < length; i++) {
-            s += this.buffer.getChar();
+            s += (char)this.getInt();
         }
         return s;
     }

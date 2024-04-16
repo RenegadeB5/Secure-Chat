@@ -2,35 +2,35 @@ package com.server.springwebsocket.utils;
 import java.nio.*;
 
 public class Encoder {
-    private ByteBuffer buffer;
+    private byte[] buffer;
+    private int at;
 
     public Encoder() {
-        this.buffer = ByteBuffer.allocate(1500);
+        this.buffer = new byte[1500];
+        this.at = 0;
     }
 
     public int getPosition() {
-        return this.buffer.position();
+        return this.at;
     }
 
     public void addInt(int i) {
-        this.buffer.putInt(i);
+        this.buffer[this.at++] = (byte)i;
     }
 
     public void addString(String s) {
-        this.buffer.putInt(s.length());
+        this.addInt(s.length());
         for (int i = 0; i < s.length(); i++) {
-            this.buffer.putChar(s.charAt(i));
+            this.addInt((int)s.charAt(i));
         }
     }
 
-    public ByteBuffer finish() {
-        int length = this.buffer.position();
-        ByteBuffer buffer = ByteBuffer.allocate(length);
-        this.buffer.flip();
+    public byte[] finish() {
+        int length = this.at-1;
+        byte[] new_buf = new byte[length];
         for (int i = 0; i < length; i++) {
-            buffer.put(this.buffer.get(i));
+            new_buf[i] = this.buffer[i];
         }
-        buffer.flip();
-        return buffer;
+        return new_buf;
     }
 }
