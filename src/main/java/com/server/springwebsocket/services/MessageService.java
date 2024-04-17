@@ -97,30 +97,20 @@ public class MessageService implements MessageServiceInterface {
             (string) alert message
         
         3: recieve message
-            (string) sender ID | (string) group ID | (string) message
+			(int) private or group message:
+				1:
+					(string) sender ID | (string) sender name | (string) message
+				2: 
+            		(string) group ID | (string) sender ID | (string) message
             
-		4: recieve ID and name updates
-			(int) type:
-				1: user update
-					(int) add or remove
+		4: group updates
+				(string) group ID | (string)  group name | (int) # of updates | repeat 
+					(int) add or remove 
 						0: add	
 							(string) user ID | (string) user name
 						1: remove 
 							(string) user ID
-					(string) user ID | (string) user name
-				2: group update
-					(int) create group, delete group, or update group members
-						1: create group
-							(string) group ID | (string)  group name
-						2: delete group
-							(string) group ID
-						3: update group members
-							(int) # of updates | repeat 
-								(int) add or remove 
-									0: add	
-										(string) user ID | (string) user name
-									1: remove 
-										(string) user ID
+
 
     */
 
@@ -128,11 +118,10 @@ public class MessageService implements MessageServiceInterface {
 
     @Override
     public void parse_packet(String origin_ws_id, byte[] array) {
-
+        User origin_user = this.user_repo.getUserByWsId(origin_ws_id);
         Decoder decoder = new Decoder(this.decrypt_packet(array));
 
         int header = decoder.getInt();
-        boolean user_exists = user_repo.hasUser(origin_ws_id);
         String token = null;
         User user = null;
         Group group = null;
@@ -144,7 +133,6 @@ public class MessageService implements MessageServiceInterface {
         System.out.println("Header: " + header);
         switch (header) {
             case 1: // register
-                if (user_exists) break;
                 String username = decoder.getString();
                 token = this.create_user(origin_ws_id, username);
                 encoder.addInt(1);
@@ -156,7 +144,6 @@ public class MessageService implements MessageServiceInterface {
                 break;
 
             case 3: // send message
-                if (!user_exists) break;
                 token = decoder.getString();
                 user = this.user_repo.getUserByWsId(origin_ws_id);
                 if (!user.authenticate(token)) break;
@@ -165,17 +152,16 @@ public class MessageService implements MessageServiceInterface {
                 String recipient_id = decoder.getString();
                 String message = decoder.getString();
                 if (message_type == 1) {
-                    this.send_direct_message(recipient_id, message);
+                    this.send_direct_message(origin_user.getUUID(), recipient_id, message);
                 }
 
                 if (message_type == 2) {
-                    this.send_group_message(recipient_id, message);
+                    this.send_group_message(origin_user.getUUID(), recipient_id, message);
                 }
 
                 break;
 
             case 4: // create group
-                if (!user_exists) break;
                 token = decoder.getString();
                 user = this.user_repo.getUserByWsId(origin_ws_id);
                 if (!user.authenticate(token)) break;
@@ -184,11 +170,11 @@ public class MessageService implements MessageServiceInterface {
                 group = new Group(group_name, group_password);
                 group.addMember(user.getUUID());
                 this.group_repo.addGroup(group);
+                this.broadcast_group_join(group.getGroupID(), user.getUUID());
                 break;
 
                 
             case 5: // join/leave group
-                if (!user_exists) break;
                 token = decoder.getString();
                 user = this.user_repo.getUserByWsId(origin_ws_id);
                 if (!user.authenticate(token)) break;
@@ -201,8 +187,12 @@ public class MessageService implements MessageServiceInterface {
                         group_password = decoder.getString();
                         if (!group.authenticate(group_password)) break;
                         group.addMember(user.getUUID());
+                        this.broadcast_group_join(group.getGroupID(), user.getUUID());
+                        break;
                     case 2:
                         group.removeMember(user.getUUID());    
+                        this.broadcast_group_leave(group.getGroupID(), user.getUUID());
+                        break;
                 }
                 
 
@@ -235,29 +225,76 @@ public class MessageService implements MessageServiceInterface {
         
     }
 
-    private void send_direct_message(String recipient_ID, String message) {
-        User recipient = user_repo.getUserByUserId(recipient_ID);
-        this.simpMessagingTemplate.convertAndSendToUser(
-            recipient.getWSID(), 
-            "/queue/listen", 
-            message
-        ); 
+    private void send_direct_message(String sender_ID, String recipient_ID, String message) {
+        User sender = this.user_repo.getUserByUserId(sender_ID);
+        User recipient = this.user_repo.getUserByUserId(recipient_ID);
+        Encoder encoder = new Encoder();
+        encoder.addInt(3);
+        encoder.addInt(1);
+        encoder.addString(sender_ID);
+        encoder.addString(sender.getUsername());
+        encoder.addString(message);
+        this.send_packet(recipient.getWSID(), encoder.finish());
     }
 
-    private void send_group_message(String group_ID, String message) {
+    private void send_group_message(String sender_ID, String group_ID, String message) {
         if (!this.group_repo.hasGroup(group_ID)) return;
         Group group = this.group_repo.getGroup(group_ID);
         List<String> member_ids = group.getMembers();
+
+        Encoder encoder = new Encoder();
+        encoder.addInt(3);
+        encoder.addInt(2);
+        encoder.addString(group_ID);
+        encoder.addString(sender_ID);
+        encoder.addString(message);
+        byte[] packet = encoder.finish();
         for (String id: member_ids) {
+            if (id.equals(sender_ID)) continue;
             User user = this.user_repo.getUserByUserId(id);
             String ws_id = user.getWSID();
-            this.simpMessagingTemplate.convertAndSendToUser(
-                ws_id, 
-                "/queue/listen", 
-                message
-            ); 
+            this.send_packet(ws_id, packet);
         }
 
+    }
+
+    private void broadcast_group_join(String group_ID, String user_ID) {
+        Group group = this.group_repo.getGroup(group_ID);
+        User user = this.user_repo.getUserByUserId(user_ID);
+        
+        List<String> member_ids = group.getMembers();
+        Encoder encoder = new Encoder();
+        encoder.addInt(4);
+        encoder.addString(group_ID);
+        encoder.addString(group.getGroupName());
+        encoder.addInt(0);
+        encoder.addString(user_ID);
+        encoder.addString(user.getUsername());
+        byte[] packet = encoder.finish();
+        for (String id: member_ids) {
+            User user_ = this.user_repo.getUserByUserId(id);
+            String ws_id = user_.getWSID();
+            this.send_packet(ws_id, packet);
+        }
+    }
+
+    private void broadcast_group_leave(String group_ID, String user_ID) {
+        Group group = this.group_repo.getGroup(group_ID);
+        User user = this.user_repo.getUserByUserId(user_ID);
+        
+        List<String> member_ids = group.getMembers();
+        Encoder encoder = new Encoder();
+        encoder.addInt(4);
+        encoder.addString(group_ID);
+        encoder.addString(group.getGroupName());
+        encoder.addInt(1);
+        encoder.addString(user_ID);
+        byte[] packet = encoder.finish();
+        for (String id: member_ids) {
+            User user_ = this.user_repo.getUserByUserId(id);
+            String ws_id = user_.getWSID();
+            this.send_packet(ws_id, packet);
+        }
     }
 
     private byte[] encrypt_packet(byte[] array) {

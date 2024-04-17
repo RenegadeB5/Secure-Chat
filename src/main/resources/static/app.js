@@ -54,7 +54,6 @@ class Encoder {
 	}
 
 	finish() {
-		console.log(this.buffer);
 		return this.buffer;
 	}
 }
@@ -120,7 +119,6 @@ function encrypt_packet(packet) {
 
 function decrypt_packet(packet) {
 	const new_ = [];
-	console.log("decrypt: ", packet)
     for (let i = 0; i < packet.length; i++) {
         new_[i] = decryptor[packet[i]];
     }
@@ -152,8 +150,6 @@ class WSHandler {
 			console.log('Connected!!!');
 			this.stompClient.subscribe('/user/queue/listen', (packet) => {
 				packet = Array.from(packet._binaryBody);
-				console.log(decrypt_packet(packet));
-				//console.log(JSON.parse(packet.body));
 				this.parse_packet(decrypt_packet(packet));
 			});
 		};
@@ -199,54 +195,78 @@ class WSHandler {
             (string) alert message
         
         3: recieve message
-            (string) sender ID | (string) group ID | (string) message
+			(int) private or group message:
+				1:
+					(string) sender ID | (string) sender name | (string) message
+				2: 
+            		(string) group ID | (string) sender ID | (string) message
             
-		4: recieve ID and name updates
-			(int) type:
-				1: user update
-					(int) add or remove
+		4: group updates
+				(string) group ID | (string)  group name | (int) # of updates | repeat 
+					(int) add or remove 
 						0: add	
 							(string) user ID | (string) user name
 						1: remove 
 							(string) user ID
-					(string) user ID | (string) user name
-				2: group update
-					(int) create group, delete group, or update group members
-						1: create group
-							(string) group ID | (string)  group name
-						2: delete group
-							(string) group ID
-						3: update group members
-							(int) # of updates | repeat 
-								(int) add or remove 
-									0: add	
-										(string) user ID | (string) user name
-									1: remove 
-										(string) user ID
 
 
     */
 	parse_packet(packet) {
 		const decoder = new Decoder(packet);
 		const header = decoder.getInt();
+		var type;
 		console.log(header);
 		switch (header) {
-			case 1:
+			case 1: // get token
 				token = decoder.getString();
 				console.log(token);
 				// get group ids and names
+				// call ui
 				break;
 
-			case 2:
+			case 2: // alert
 				var alert = decoder.getString();
 				// alert window with message
+				// call ui
 				break;
 
 			case 3:
-				var sender_id = decoder.getString();
+				type = decoder.getInt();
+				switch (type) {
+					case 1: // private message
+						var sender_id = decoder.getString();
+						var sender_name = decoder.getString();
+						var message = decoder.getString();
+						// call ui
+						break;
+					case 2: // group message
+						var group_id = decoder.getString();
+						var sender_id = decoder.getString();
+						var message = decoder.getString();
+						// call ui
+						break;
+				}
+				
+				break;
+
+			case 4:
 				var group_id = decoder.getString();
-				var message = decoder.getString();
-				// do something with message
+				var group_name = decoder.getString();
+				var updates = decoder.getInt();
+				for (let i = 0; i < updates; i++) {
+					switch (decoder.getInt()) {
+						case 0: // add user to group
+							var user_id = decoder.getInt();
+							var user_id = decoder.getInt();
+							// call ui
+							break;
+						case 1: // delete user from group
+							var user_id = decoder.getInt();
+							// call ui
+							break;
+					}
+				}
+				
 				break;
 
 			
@@ -260,8 +280,8 @@ class WSHandler {
 	}
 
 	send(packet) {
-		const encrypted = new Uint8Array(encrypt_packet(packet));
-		console.log(packet);
+		const encrypted = encrypt_packet(packet);
+		console.log(encrypted);
 		this.stompClient.publish({
 			destination: "/app/endpoint",
 			binaryBody: encrypted
@@ -341,6 +361,8 @@ class UIHandler {
 	const ui = new UIHandler();
 	await delay(5000);
 	ui.register("rgbb");
+	await delay(3000);
+	ui.create_group("club", "club");
 })();
 
 
