@@ -28,6 +28,7 @@ class Decoder {
 		for (let i = 0; i < length; i++) {
 			s += String.fromCharCode(this.buffer[this.at++]);
 		}
+		
 		return s;
 	}
 }
@@ -215,7 +216,7 @@ class WSHandler {
 		const decoder = new Decoder(packet);
 		const header = decoder.getInt();
 		var type;
-		console.log(header);
+		console.log("recieved: ", packet);
 		switch (header) {
 			case 1: // get token
 				token = decoder.getString();
@@ -226,6 +227,7 @@ class WSHandler {
 
 			case 2: // alert
 				var alert = decoder.getString();
+				console.log("alert: ", alert);
 				// alert window with message
 				// call ui
 				break;
@@ -237,12 +239,14 @@ class WSHandler {
 						var sender_id = decoder.getString();
 						var sender_name = decoder.getString();
 						var message = decoder.getString();
+						console.log("private message: ", sender_id, sender_name, message);
 						// call ui
 						break;
 					case 2: // group message
 						var group_id = decoder.getString();
 						var sender_id = decoder.getString();
 						var message = decoder.getString();
+						console.log("group message: ", group_id, sender_id, message);
 						// call ui
 						break;
 				}
@@ -253,18 +257,22 @@ class WSHandler {
 				var group_id = decoder.getString();
 				var group_name = decoder.getString();
 				var updates = decoder.getInt();
+				var user_id;
+				var user_name;
 				for (let i = 0; i < updates; i++) {
-					switch (decoder.getInt()) {
+					var action = decoder.getInt();
+					sw: switch (action) {
 						case 0: // add user to group
-							var user_id = decoder.getInt();
-							var user_id = decoder.getInt();
+							user_id = decoder.getString();
+							user_name = decoder.getString();
+							break sw;
 							// call ui
-							break;
 						case 1: // delete user from group
-							var user_id = decoder.getInt();
+							user_id = decoder.getString();
+							break sw;
 							// call ui
-							break;
 					}
+					console.log("add user: " + group_id, group_name, updates, user_id, user_name);
 				}
 				
 				break;
@@ -281,7 +289,6 @@ class WSHandler {
 
 	send(packet) {
 		const encrypted = encrypt_packet(packet);
-		console.log(encrypted);
 		this.stompClient.publish({
 			destination: "/app/endpoint",
 			binaryBody: encrypted
@@ -357,13 +364,8 @@ class UIHandler {
 
 }
 
-(async () => {
-	const ui = new UIHandler();
-	await delay(5000);
-	ui.register("rgbb");
-	await delay(3000);
-	ui.create_group("club", "club");
-})();
+const ui = new UIHandler();
+
 
 
 

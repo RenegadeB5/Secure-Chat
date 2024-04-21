@@ -26,7 +26,7 @@ public class Encoder {
     }
 
     public byte[] finish() {
-        int length = this.at-1;
+        int length = this.at;
         byte[] new_buf = new byte[length];
         for (int i = 0; i < length; i++) {
             new_buf[i] = this.buffer[i];

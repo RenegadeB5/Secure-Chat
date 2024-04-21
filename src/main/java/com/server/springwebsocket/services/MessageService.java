@@ -61,11 +61,13 @@ public class MessageService implements MessageServiceInterface {
             range[pos_1] = int_2;
         }
         this.encryptor = range;
+        String str = "";
         for (int i = 0; i < 256; i++) {
-            System.out.println(this.encryptor[i]);
+            str += this.encryptor[i];
             int num = range[i];
             this.decryptor[num] = i;
         }
+        System.out.println(str);
     }
 
 
@@ -164,13 +166,19 @@ public class MessageService implements MessageServiceInterface {
             case 4: // create group
                 token = decoder.getString();
                 user = this.user_repo.getUserByWsId(origin_ws_id);
+                
+                System.out.println("Token: " + user.getToken() + " " + this.group_repo.test());
                 if (!user.authenticate(token)) break;
+                
+                System.out.println(user.getToken());
                 group_name = decoder.getString();
                 group_password = decoder.getString();
                 group = new Group(group_name, group_password);
                 group.addMember(user.getUUID());
                 this.group_repo.addGroup(group);
                 this.broadcast_group_join(group.getGroupID(), user.getUUID());
+                
+                this.send_group_members(group.getGroupID(), user.getUUID());
                 break;
 
                 
@@ -179,7 +187,8 @@ public class MessageService implements MessageServiceInterface {
                 user = this.user_repo.getUserByWsId(origin_ws_id);
                 if (!user.authenticate(token)) break;
                 String group_id = decoder.getString();
-                if (this.group_repo.hasGroup(group_id)) break;
+                System.out.println("Group ID: " + group_id + " " + this.group_repo.test());
+                if (!this.group_repo.hasGroup(group_id)) break;
                 group = this.group_repo.getGroup(group_id);
                 int action = decoder.getInt();
                 switch (action) {
@@ -188,6 +197,7 @@ public class MessageService implements MessageServiceInterface {
                         if (!group.authenticate(group_password)) break;
                         group.addMember(user.getUUID());
                         this.broadcast_group_join(group.getGroupID(), user.getUUID());
+                        this.send_group_members(group_id, user.getUUID());
                         break;
                     case 2:
                         group.removeMember(user.getUUID());    
@@ -202,9 +212,12 @@ public class MessageService implements MessageServiceInterface {
     }
 
     private void send_packet(String recipient_WSID, byte[] packet) {
+        packet = packet.clone();
         System.out.println("Sending to: " + recipient_WSID);
+        
+        System.out.println((int)(packet[0] & 0xFF) + " " + (int)(packet[1] & 0xFF));
         byte[] new_packet = this.encrypt_packet(packet);
-        System.out.println(new_packet[0] + " " + new_packet[1]);
+        System.out.println((int)(new_packet[0] & 0xFF) + " " + (int)(new_packet[1] & 0xFF));
 
         SimpMessageHeaderAccessor headerAccessor = SimpMessageHeaderAccessor.create(SimpMessageType.MESSAGE);
         headerAccessor.setSessionId(recipient_WSID);
@@ -267,15 +280,40 @@ public class MessageService implements MessageServiceInterface {
         encoder.addInt(4);
         encoder.addString(group_ID);
         encoder.addString(group.getGroupName());
+        encoder.addInt(1);
         encoder.addInt(0);
         encoder.addString(user_ID);
         encoder.addString(user.getUsername());
         byte[] packet = encoder.finish();
         for (String id: member_ids) {
             User user_ = this.user_repo.getUserByUserId(id);
+            if (user_ID.equals(id)) continue;
             String ws_id = user_.getWSID();
             this.send_packet(ws_id, packet);
         }
+    }
+
+    private void send_group_members(String group_ID, String user_ID) {
+        Group group = this.group_repo.getGroup(group_ID);
+        User user = this.user_repo.getUserByUserId(user_ID);
+        
+        List<String> member_ids = group.getMembers();
+        Encoder encoder = new Encoder();
+        encoder.addInt(4);
+        encoder.addString(group_ID);
+        encoder.addString(group.getGroupName());
+        encoder.addInt(member_ids.size());
+        System.out.println("Size: " + member_ids.size());
+        
+        for (String id: member_ids) {
+            User user_ = this.user_repo.getUserByUserId(id);
+            encoder.addInt(0);
+            System.out.println(user_.getUUID());
+            encoder.addString(user_.getUUID());
+            encoder.addString(user_.getUsername());
+        }
+        byte[] packet = encoder.finish();
+        this.send_packet(user.getWSID(), packet);
     }
 
     private void broadcast_group_leave(String group_ID, String user_ID) {

@@ -7,6 +7,7 @@ public class Decoder {
 
     public Decoder(byte[] buffer) {
         this.buffer = buffer;
+        this.at = 0;
     }
 
     public int getInt() {

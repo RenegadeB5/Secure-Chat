@@ -52,7 +52,7 @@ public class Group {
     }
 
     public boolean authenticate(String password) {
-        return this.groupPassword == password;
+        return this.groupPassword.equals(password);
     }
 
 }

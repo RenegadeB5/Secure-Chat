@@ -39,7 +39,7 @@ public class User {
     }
 
     public boolean authenticate(String token) {
-        return (token == this.token);
+        return (token.equals(this.token));
     }
 
 

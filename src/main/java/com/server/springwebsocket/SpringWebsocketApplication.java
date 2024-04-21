@@ -31,11 +31,12 @@ public class SpringWebsocketApplication {
             bw = new BufferedWriter(fw);
             bw.write(build);
             bw.close();
+			SpringApplication.run(SpringWebsocketApplication.class, args);
 		} catch (IOException e) {
 			System.out.println("An error occurred.");
 			e.printStackTrace();
 		}
-		SpringApplication.run(SpringWebsocketApplication.class, args);
+		
 	}
 
 }
