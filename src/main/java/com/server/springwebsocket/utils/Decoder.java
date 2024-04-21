@@ -10,6 +10,10 @@ public class Decoder {
         this.at = 0;
     }
 
+    public void set_buffer(byte[] buffer) {
+        this.buffer = buffer;
+    }
+
     public int getInt() {
         return (int)(this.buffer[this.at++] & 0xFF); 
     }

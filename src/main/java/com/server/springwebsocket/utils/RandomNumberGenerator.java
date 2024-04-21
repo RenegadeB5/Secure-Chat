@@ -17,9 +17,9 @@ public class RandomNumberGenerator {
         for (int i = 0; i < seed.length(); i++) { 
             int c = seed.charAt(i);
             //System.out.println(c);
-            this.state = this.state + (c * i);
+            this.state += ((c * i) % this.c);
         }
-        //System.out.println(this.state);
+        System.out.println("State: " + this.state);
     }
 
     public double nextInt() {

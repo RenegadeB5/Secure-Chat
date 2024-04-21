@@ -18,6 +18,10 @@ class Decoder {
 		this.at = 0;
 	}
 
+	private_decrypt() {
+		this.buffer = private_decrypt_packet(this.buffer);
+	}
+
 	getInt() {
 		return this.buffer[this.at++];
 	}
@@ -37,6 +41,10 @@ class Encoder {
 	constructor() {
 		this.buffer = [];
 		this.position = 0;
+	}
+
+	private_encrypt() {
+		this.buffer = private_encrypt_packet(this.buffer);
 	}
 
 	getPosition() {
@@ -68,7 +76,7 @@ class RandomNumberGenerator {
 
 		for (let i = 0; i < seed.length; i++) {
 			const c = seed.charCodeAt(i);
-			this.state += c * i;
+			this.state += ((c * i) % this.c);
 		}
 	}
 
@@ -102,26 +110,49 @@ for (let i = 0; i < 1000; i++) {
 	range[pos_2] = int_1;
 	range[pos_1] = int_2;
 }
-const encryptor = range;
-const decryptor = new Array(256);
+const global_encryptor = range;
+const global_decryptor = new Array(256);
 for (let i = 0; i < 256; i++) {
 	let num = range[i];
-	decryptor[num] = i;
+	global_decryptor[num] = i;
 }
 
+var private_encryptor;
+var private_decryptor;
 
-function encrypt_packet(packet) {
+
+function global_encrypt_packet(packet) {
 	const new_ = [];
-    for (let i = 0; i < packet.length; i++) {
-        new_[i] = encryptor[packet[i]];
+    for (let i = 1; i < packet.length; i++) {
+        new_[i] = global_encryptor[packet[i]];
+    }
+	new_[0] = packet[0];
+    return new_;
+}
+
+function global_decrypt_packet(packet) {
+	const new_ = [];
+    for (let i = 1; i < packet.length; i++) {
+        new_[i] = global_decryptor[packet[i]];
+    }
+	new_[0] = packet[0];
+    return new_;
+}
+
+function private_encrypt_packet(packet) {
+	const new_ = [];
+	new_[0] = packet[0];
+    for (let i = 1; i < packet.length; i++) {
+        new_[i] = private_encryptor[packet[i]];
     }
     return new_;
 }
 
-function decrypt_packet(packet) {
+function private_decrypt_packet(packet) {
 	const new_ = [];
-    for (let i = 0; i < packet.length; i++) {
-        new_[i] = decryptor[packet[i]];
+	new_[0] = packet[0];
+    for (let i = 1; i < packet.length; i++) {
+        new_[i] = private_decryptor[packet[i]];
     }
     return new_;
 }
@@ -151,7 +182,7 @@ class WSHandler {
 			console.log('Connected!!!');
 			this.stompClient.subscribe('/user/queue/listen', (packet) => {
 				packet = Array.from(packet._binaryBody);
-				this.parse_packet(decrypt_packet(packet));
+				this.parse_packet(global_decrypt_packet(packet));
 			});
 		};
 		
@@ -170,7 +201,7 @@ class WSHandler {
 
 	/*
 	packet structure
-	serverbound (int): 
+	(int 0 or 1) global or private decrypt | serverbound (int): 
 		1: register 
 			string username
 		2: authenticate
@@ -188,7 +219,7 @@ class WSHandler {
 			2: leave
 
 
-    clientbound (int):
+    (int 0 or 1) global or private decrypt | clientbound (int):
         1: recieve user token
             (string) user token 
 
@@ -214,13 +245,40 @@ class WSHandler {
     */
 	parse_packet(packet) {
 		const decoder = new Decoder(packet);
+		const private_ = decoder.getInt();
+		if (private_) {
+			decoder.private_decrypt();
+		}
 		const header = decoder.getInt();
 		var type;
 		console.log("recieved: ", packet);
+		console.log(private_, header);
 		switch (header) {
 			case 1: // get token
 				token = decoder.getString();
 				console.log(token);
+
+				let p_generator = new RandomNumberGenerator(token);
+				let p_range = new Array(256);
+				for (let i = 0; i < 256; i++) {
+					p_range[i] = i;
+				}
+				for (let i = 0; i < 1000; i++) {
+					let pos_1 = p_generator.nextRange(1, 256);
+					let pos_2 = p_generator.nextRange(1, 256);
+					let int_1 = p_range[pos_1];
+					let int_2 = p_range[pos_2];
+
+					p_range[pos_2] = int_1;
+					p_range[pos_1] = int_2;
+				}
+				private_encryptor = p_range;
+				private_decryptor = new Array(256);
+				for (let i = 0; i < 256; i++) {
+					let num = p_range[i];
+					private_decryptor[num] = i;
+				}
+
 				// get group ids and names
 				// call ui
 				break;
@@ -265,14 +323,16 @@ class WSHandler {
 						case 0: // add user to group
 							user_id = decoder.getString();
 							user_name = decoder.getString();
+							console.log("add user: " + group_id, group_name, updates, user_id, user_name);
 							break sw;
 							// call ui
 						case 1: // delete user from group
 							user_id = decoder.getString();
+							console.log("remove user: " + group_id, group_name, updates, user_id);
 							break sw;
 							// call ui
 					}
-					console.log("add user: " + group_id, group_name, updates, user_id, user_name);
+					
 				}
 				
 				break;
@@ -288,7 +348,8 @@ class WSHandler {
 	}
 
 	send(packet) {
-		const encrypted = encrypt_packet(packet);
+		console.log("Sent: ", packet);
+		const encrypted = global_encrypt_packet(packet);
 		this.stompClient.publish({
 			destination: "/app/endpoint",
 			binaryBody: encrypted
@@ -304,6 +365,7 @@ class UIHandler {
 
 	register(username) {
 		const encoder = new Encoder();
+		encoder.addInt(0);
 		encoder.addInt(1);
 		encoder.addString(username);
 		this.ws.send(encoder.finish());
@@ -311,31 +373,35 @@ class UIHandler {
 
 	send_private_message(recipient_id, message) {
 		const encoder = new Encoder();
+		encoder.addInt(1);
 		encoder.addInt(3);
 		encoder.addString(token);
 		encoder.addInt(1);
 		encoder.addString(recipient_id);
 		encoder.addString(message);
-		this.ws.send(encoder.finish());
+		
+		this.ws.send(private_encrypt_packet(encoder.finish()));
 	}
 
 	send_group_message(recipient_id, message) {
 		const encoder = new Encoder();
+		encoder.addInt(1);
 		encoder.addInt(3);
 		encoder.addString(token);
 		encoder.addInt(2);
 		encoder.addString(recipient_id);
 		encoder.addString(message);
-		this.ws.send(encoder.finish());
+		this.ws.send(private_encrypt_packet(encoder.finish()));
 	}
 
 	create_group(name, password) {
 		const encoder = new Encoder();
+		encoder.addInt(1);
 		encoder.addInt(4);
 		encoder.addString(token);
 		encoder.addString(name);
 		encoder.addString(password);
-		this.ws.send(encoder.finish());
+		this.ws.send(private_encrypt_packet(encoder.finish()));
 	}
 
 	/*5: join/leave group
@@ -345,21 +411,23 @@ class UIHandler {
 			2: leave*/
 	join_group(group_id, password) {
 		const encoder = new Encoder();
+		encoder.addInt(1);
 		encoder.addInt(5);
 		encoder.addString(token);
 		encoder.addString(group_id);
 		encoder.addInt(1);
 		encoder.addString(password);
-		this.ws.send(encoder.finish());
+		this.ws.send(private_encrypt_packet(encoder.finish()));
 	}
 
 	leave_group(group_id) {
 		const encoder = new Encoder();
+		encoder.addInt(1);
 		encoder.addInt(5);
 		encoder.addString(token);
 		encoder.addString(group_id);
 		encoder.addInt(2);
-		this.ws.send(encoder.finish());
+		this.ws.send(private_encrypt_packet(encoder.finish()));
 	}
 
 }

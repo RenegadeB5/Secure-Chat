@@ -18,8 +18,8 @@ import java.util.*;
 @Service
 public class MessageService implements MessageServiceInterface {
     
-    private int[] encryptor;
-    private int[] decryptor;
+    private int[] global_encryptor;
+    private int[] global_decryptor;
     private final SimpMessagingTemplate simpMessagingTemplate;
     private final GroupRepositoryInterface group_repo;
 	private final UserRepositoryInterface user_repo;
@@ -30,7 +30,7 @@ public class MessageService implements MessageServiceInterface {
         this.group_repo = groups;
         this.user_repo = users;
 
-        this.decryptor = new int[256];
+        this.global_decryptor = new int[256];
         System.out.println("new: " + System.getProperty("user.dir") + "\\src\\main\\java\\com\\server\\springwebsocket\\build");
         File file = new File(System.getProperty("user.dir") + "\\src\\main\\java\\com\\server\\springwebsocket\\build");
         String seed = "";
@@ -60,12 +60,12 @@ public class MessageService implements MessageServiceInterface {
             range[pos_2] = int_1;
             range[pos_1] = int_2;
         }
-        this.encryptor = range;
+        this.global_encryptor = range;
         String str = "";
         for (int i = 0; i < 256; i++) {
-            str += this.encryptor[i];
+            str += this.global_encryptor[i];
             int num = range[i];
-            this.decryptor[num] = i;
+            this.global_decryptor[num] = i;
         }
         System.out.println(str);
     }
@@ -120,9 +120,14 @@ public class MessageService implements MessageServiceInterface {
 
     @Override
     public void parse_packet(String origin_ws_id, byte[] array) {
+        
+        array = array.clone();
         User origin_user = this.user_repo.getUserByWsId(origin_ws_id);
-        Decoder decoder = new Decoder(this.decrypt_packet(array));
-
+        Decoder decoder = new Decoder(this.global_decrypt_packet(array));
+        int private_ = decoder.getInt();
+        if (private_ == 1) {
+            decoder.set_buffer(origin_user.decrypt_packet(array));
+        }
         int header = decoder.getInt();
         String token = null;
         User user = null;
@@ -132,13 +137,15 @@ public class MessageService implements MessageServiceInterface {
 
         Encoder encoder = new Encoder();
         
-        System.out.println("Header: " + header);
+        System.out.println("Header: " + private_ + " " + header);
         switch (header) {
             case 1: // register
                 String username = decoder.getString();
                 token = this.create_user(origin_ws_id, username);
+                encoder.addInt(0);
                 encoder.addInt(1);
                 encoder.addString(token);
+                
                 this.send_packet(origin_ws_id, encoder.finish());
                 break;
 
@@ -216,7 +223,7 @@ public class MessageService implements MessageServiceInterface {
         System.out.println("Sending to: " + recipient_WSID);
         
         System.out.println((int)(packet[0] & 0xFF) + " " + (int)(packet[1] & 0xFF));
-        byte[] new_packet = this.encrypt_packet(packet);
+        byte[] new_packet = this.global_encrypt_packet(packet);
         System.out.println((int)(new_packet[0] & 0xFF) + " " + (int)(new_packet[1] & 0xFF));
 
         SimpMessageHeaderAccessor headerAccessor = SimpMessageHeaderAccessor.create(SimpMessageType.MESSAGE);
@@ -242,12 +249,13 @@ public class MessageService implements MessageServiceInterface {
         User sender = this.user_repo.getUserByUserId(sender_ID);
         User recipient = this.user_repo.getUserByUserId(recipient_ID);
         Encoder encoder = new Encoder();
+        encoder.addInt(1);
         encoder.addInt(3);
         encoder.addInt(1);
         encoder.addString(sender_ID);
         encoder.addString(sender.getUsername());
         encoder.addString(message);
-        this.send_packet(recipient.getWSID(), encoder.finish());
+        this.send_packet(recipient.getWSID(), recipient.encrypt_packet(encoder.finish()));
     }
 
     private void send_group_message(String sender_ID, String group_ID, String message) {
@@ -256,6 +264,7 @@ public class MessageService implements MessageServiceInterface {
         List<String> member_ids = group.getMembers();
 
         Encoder encoder = new Encoder();
+        encoder.addInt(1);
         encoder.addInt(3);
         encoder.addInt(2);
         encoder.addString(group_ID);
@@ -266,7 +275,7 @@ public class MessageService implements MessageServiceInterface {
             if (id.equals(sender_ID)) continue;
             User user = this.user_repo.getUserByUserId(id);
             String ws_id = user.getWSID();
-            this.send_packet(ws_id, packet);
+            this.send_packet(ws_id, user.encrypt_packet(packet));
         }
 
     }
@@ -277,6 +286,7 @@ public class MessageService implements MessageServiceInterface {
         
         List<String> member_ids = group.getMembers();
         Encoder encoder = new Encoder();
+        encoder.addInt(1);
         encoder.addInt(4);
         encoder.addString(group_ID);
         encoder.addString(group.getGroupName());
@@ -289,7 +299,7 @@ public class MessageService implements MessageServiceInterface {
             User user_ = this.user_repo.getUserByUserId(id);
             if (user_ID.equals(id)) continue;
             String ws_id = user_.getWSID();
-            this.send_packet(ws_id, packet);
+            this.send_packet(ws_id, user_.encrypt_packet(packet));
         }
     }
 
@@ -299,6 +309,7 @@ public class MessageService implements MessageServiceInterface {
         
         List<String> member_ids = group.getMembers();
         Encoder encoder = new Encoder();
+        encoder.addInt(1);
         encoder.addInt(4);
         encoder.addString(group_ID);
         encoder.addString(group.getGroupName());
@@ -313,7 +324,7 @@ public class MessageService implements MessageServiceInterface {
             encoder.addString(user_.getUsername());
         }
         byte[] packet = encoder.finish();
-        this.send_packet(user.getWSID(), packet);
+        this.send_packet(user.getWSID(), user.encrypt_packet(packet));
     }
 
     private void broadcast_group_leave(String group_ID, String user_ID) {
@@ -322,6 +333,7 @@ public class MessageService implements MessageServiceInterface {
         
         List<String> member_ids = group.getMembers();
         Encoder encoder = new Encoder();
+        encoder.addInt(1);
         encoder.addInt(4);
         encoder.addString(group_ID);
         encoder.addString(group.getGroupName());
@@ -331,20 +343,20 @@ public class MessageService implements MessageServiceInterface {
         for (String id: member_ids) {
             User user_ = this.user_repo.getUserByUserId(id);
             String ws_id = user_.getWSID();
-            this.send_packet(ws_id, packet);
+            this.send_packet(ws_id, user_.encrypt_packet(packet));
         }
     }
 
-    private byte[] encrypt_packet(byte[] array) {
-        for (int i = 0; i < array.length; i++) {
-            array[i] = (byte)this.encryptor[(int)array[i] & 0xFF];
+    private byte[] global_encrypt_packet(byte[] array) {
+        for (int i = 1; i < array.length; i++) {
+            array[i] = (byte)this.global_encryptor[(int)array[i] & 0xFF];
         }
         return array;
     }
 
-    private byte[] decrypt_packet(byte[] array) {
-        for (int i = 0; i < array.length; i++) {
-            array[i] = (byte)this.decryptor[(int)array[i] & 0xFF];
+    private byte[] global_decrypt_packet(byte[] array) {
+        for (int i = 1; i < array.length; i++) {
+            array[i] = (byte)this.global_decryptor[(int)array[i] & 0xFF];
         }
         return array;
     }
